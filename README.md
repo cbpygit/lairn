@@ -1,0 +1,2 @@
+# lairn
+Ai-assisted learning
