@@ -8,7 +8,7 @@ def main(use_this_week=False):
     out_dir = MAIN_DIR / "weekly_summaries"
 
     year, this_week, _ = date.today().isocalendar()
-    last_week = this_week - 1
+    last_week = this_week - 3
 
     target_week = this_week if use_this_week else last_week
 
@@ -34,4 +34,4 @@ def main(use_this_week=False):
 
 
 if __name__ == "__main__":
-    main(True)
+    main(False)
