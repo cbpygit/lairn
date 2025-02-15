@@ -1,6 +1,7 @@
 import os
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Tuple
 
 import pandas as pd
@@ -14,7 +15,7 @@ TEST_STR = "?launchpad=test"
 SOFAHELD_STR = "practice_app"
 EXPORTS_DIR = SOFA_DIR / "sofatutor_exports"
 PARSED_DIR = SOFA_DIR / "sofatutor_parsed"
-ACTIVITIES_OUTPUT_DIR = SOFA_DIR / "activities"
+ACTIVITIES_OUTPUT_DIR = Path("/home/carlo/private/lairn/tmp/")
 
 DF_SOFA = pd.read_excel(PARSED_DIR / "sofatutor_videos.xlsx")
 
@@ -64,6 +65,12 @@ def main():
         for data in activities:
             url = data["url"].strip()
 
+            if (
+                not url
+                == "https://www.sofatutor.com/englisch/videos/prepositions-die-praepositionen?launchpad=test"
+            ):
+                continue
+
             if SOFAHELD_STR in url:
                 activity_parsed = SofatutorLearningActivity.model_validate(
                     {
@@ -95,6 +102,9 @@ def main():
                 continue
 
             out_path.write_text(activity_parsed.json())
+
+            break
+        break
 
 
 if __name__ == "__main__":

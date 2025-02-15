@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -152,7 +153,7 @@ class SofatutorLearningActivity(BaseModel):
     @classmethod
     def from_json_file(cls, file_path: Path) -> "SofatutorLearningActivity":
         with open(file_path, "r", encoding="utf-8") as f:
-            return cls.model_validate(f.read())
+            return cls.model_validate_json(f.read())
 
     @property
     def default_file_name(self) -> str:
@@ -176,3 +177,13 @@ class SofatutorLearningActivity(BaseModel):
 {self.description}
   
 """
+
+
+def load_activities(path: Path) -> list[SofatutorLearningActivity]:
+    if not isinstance(path, Path):
+        path = Path(path)
+
+    activities = []
+    for file in path.glob("*.json"):
+        activities.append(SofatutorLearningActivity.from_json_file(file))
+    return activities
