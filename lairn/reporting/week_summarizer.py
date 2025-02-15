@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from lairn.config import LLM, OUTPUT_LANGUAGE
 from lairn.context_mixin import ContextMixinClassLevel2
+from lairn.integrations.sofatutor.activity_list_parser import SofatutorLearningActivity
 
 from lairn.learn_log import LearnLogMessage
 
@@ -21,6 +22,11 @@ PT_LIST_WEEK_ACTIVITIES = PromptTemplate(
     school subject, using only the known subjects from the list provided in the user instructions. If the
     activity is not related to a school subject, group it under the "Other" category. Not all subjects need
     to be present in the logs.
+    
+    Take into account the following context information for common terms and tools to know what they mean
+    when they appear in the logs:
+    
+    {additional_explanations}
 
     |USER|
 
@@ -49,6 +55,7 @@ PT_LIST_WEEK_ACTIVITIES = PromptTemplate(
 """,
     input_variables=[
         "age",
+        "additional_explanations",
         "logs",
         "known_subjects",
         "response_format",
@@ -67,6 +74,11 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
     Write a short summary to explain what progress the student made during the week. The summary should be
     concise but informative. The target reader is an external instructor who monitors the student's progress
     and uses this to give advice to the parents. 
+    
+    Take into account the following context information for common terms and tools to know what they mean
+    when they appear in the logs:
+    
+    {additional_explanations}
 
     |USER|
 
@@ -75,10 +87,18 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
     {activities}
 
     ## Further instructions
-      - Respond with an unstructured text summary (no sections, paragraphs, bullet points or lists)
-      - Do not judge or evaluate the activities, just summarize them
+      - Start the summary with an subject composition overview statement, for example 'This week was 
+        dominated by math and science activities' or 'This week was very diverse with activities in
+        multiple subjects'. Do not use exactly these examples to avoid boring repetition.
+      - Respond with an unstructured text summary (no sections, paragraphs, bullet points or lists).
+      - Do not judge or evaluate the activities, just summarize them.
       - Do not list the activities again, except to give examples. You should rather describe general 
         categories and the progress that was made. Be concise.
+      - Do not mention exact time durations of activities. For example, if the activity notes 'reading 
+        10min...' just mention 'reading' in the summary. Do not write "He read for 10 minutes".
+      - Make sure major activities are emphasized over small details. For example, if the student
+        completed a major project, mention that before mentioning smaller tasks. Do not exaggerate
+        the importance of small tasks that last only few minutes.
 
     ## Response language
 
@@ -87,6 +107,7 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
 """,
     input_variables=[
         "age",
+        "additional_explanations",
         "activities",
         "response_language",
     ],
@@ -144,12 +165,21 @@ class WeekSummarizer(ContextMixinClassLevel2):
         self.model_name = model_name or LLM
 
         self.model = ChatOpenAI(model_name=self.model_name, temperature=0.0)
+        self.additional_explanations = self.load_additional_explanations()
 
     def get_logs_for_date_range(self, start_date: date, end_date: date) -> list[LearnLogMessage]:
         logs = self.load_logs()
         return [log for log in logs if start_date <= log.timestamp.date() <= end_date]
 
+    def get_sofa_activities_for_date_range(
+        self, start_date: date, end_date: date
+    ) -> list[SofatutorLearningActivity]:
+        logs = self.load_sofa_activities()
+        return [log for log in logs if start_date <= log.date_ref <= end_date]
+
     def summarize_week(self, start_date: date, end_date: date) -> WeekActivitiesWithDateInfo:
+        print(f"Summarizing week from {start_date} to {end_date}")
+
         iso_cal = start_date.isocalendar()
         assert iso_cal[2] == 1, "Start date must be a Monday"
         assert end_date.isocalendar()[2] == 7, "End date must be a Sunday"
@@ -159,6 +189,8 @@ class WeekSummarizer(ContextMixinClassLevel2):
         year = iso_cal[0]
 
         logs = self.get_logs_for_date_range(start_date, end_date)
+        sofa_activities = self.get_sofa_activities_for_date_range(start_date, end_date)
+        logs = logs + sofa_activities
         if len(logs) == 0:
             raise ValueError("No logs found for the given date range")
 
@@ -170,6 +202,7 @@ class WeekSummarizer(ContextMixinClassLevel2):
         activities = chain.invoke(
             {
                 "age": self.student_age,
+                "additional_explanations": self.additional_explanations,
                 "logs": "".join([log.str_fmt() for log in logs]),
                 "known_subjects": str(list(sorted(self.load_curricula().keys()))),
                 "response_format": parser.get_format_instructions(),
@@ -180,6 +213,7 @@ class WeekSummarizer(ContextMixinClassLevel2):
         summary = self.model.invoke(
             PT_SUMMARIZE_WEEK.template.format(
                 age=self.student_age,
+                additional_explanations=self.additional_explanations,
                 activities=activities.str_fmt(),
                 response_language=OUTPUT_LANGUAGE,
             )
