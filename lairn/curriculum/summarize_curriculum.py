@@ -20,7 +20,9 @@ class CurriculumSummarizer:
     def __init__(self, model_name: str | None = None):
         self.model_name = model_name or LLM
 
-        self.model = ChatOpenAI(model_name=self.model_name, temperature=0.0)
+        self.model = ChatOpenAI(
+            model_name=self.model_name, temperature=1.0 if model_name == "o1-preview" else 0.0
+        )
 
     async def _analyze_document_structure(
         self, preface_content: str
