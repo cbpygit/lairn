@@ -21,7 +21,7 @@ class CurriculumSummarizer:
         self.model_name = model_name or LLM
 
         self.model = ChatOpenAI(
-            model_name=self.model_name, temperature=1.0 if model_name == "o1-preview" else 0.0
+            model_name=self.model_name, temperature=1.0 if model_name.startswith("o") else 0.0
         )
 
     async def _analyze_document_structure(

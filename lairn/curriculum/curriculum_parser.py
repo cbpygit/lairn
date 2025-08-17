@@ -16,7 +16,7 @@ class CurriculumParser:
         self.model_name = model_name or LLM
 
         self.model = ChatOpenAI(
-            model_name=self.model_name, temperature=1.0 if model_name == "o1-preview" else 0.0
+            model_name=self.model_name, temperature=1.0 if model_name.startswith("o") else 0.0
         )
 
     async def parse_curriculum(self, curriculum_summary: str) -> Curriculum:

@@ -106,9 +106,13 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
         homeschooling and Nomy School activities. For example "This week combined intensive math work
         at Nomy School with creative writing activities at home". Do not use this exact example to
         avoid boring repetition.
+      - If the notes contain information about skipped Nomy school attendance, take it into account.
       - Take into account the previous summaries to avoid repeating yourself, and to achieve a
         "good flow" for a reader who reads multiple week summaries in a row.
-      - Respond with an unstructured text summary (no sections, paragraphs, bullet points or lists).
+      - In general: Respond with an unstructured (or minimally structured if too long) text summary 
+        (may use paragraphs, but not sections, bullet points or lists). Exception: if the notes
+        describe a project or other out-of-the-ordinary activities of longer duration, you should
+        use sections and make it stand out.
       - Do not judge or evaluate the activities, just summarize them.
       - Do not list the activities again, except to give examples. You should rather describe general 
         categories and the progress that was made. Be concise.
@@ -229,7 +233,7 @@ class WeekSummarizer(ContextMixinClassLevel2):
         self.model_name = model_name or LLM
 
         self.model = ChatOpenAI(
-            model_name=self.model_name, temperature=1.0 if self.model_name == "o1-preview" else 0.0
+            model_name=self.model_name, temperature=1.0 if model_name.startswith("o") else 1.0
         )
         print(self.model)
         self.additional_explanations = self.load_additional_explanations()

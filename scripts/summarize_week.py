@@ -4,7 +4,7 @@ import click
 from pathlib import Path
 from typing import List
 
-from lairn.config import MAIN_DIR
+from lairn.config import MAIN_DIR, LLM
 from lairn.reporting.week_summarizer import WeekSummarizer
 
 
@@ -105,7 +105,7 @@ def main(weeks: List[int], current: bool, force: bool):
     out_dir = MAIN_DIR / "weekly_summaries"
     out_dir.mkdir(exist_ok=True, parents=True)
 
-    summarizer = WeekSummarizer()
+    summarizer = WeekSummarizer(model_name=LLM)
 
     if force:
         click.echo("⚠️  Force mode enabled - existing summaries will be overwritten")

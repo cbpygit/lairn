@@ -143,9 +143,8 @@ class NomyReportParser:
     def __init__(self, model_name: str | None = None):
         from langchain_openai import ChatOpenAI
 
-        self.model = ChatOpenAI(
-            model_name=model_name or LLM, temperature=1.0 if model_name == "o1-preview" else 0.0
-        )
+        model_name = model_name or LLM
+        self.model = ChatOpenAI(model_name=model_name, temperature=1.0 if model_name.startswith("o") else 0.0)
 
     def parse_pdf(self, pdf_path: Path) -> List[NomyWeekSummary]:
         """Parse a Nomy weekly report PDF and return a list of week summaries."""
