@@ -8,7 +8,7 @@ from lairn.config import MAIN_DIR, LLM
 from lairn.reporting.week_summarizer import WeekSummarizer
 
 
-def process_week(summarizer: WeekSummarizer, year: int, week_number: int, out_dir: Path, force: bool = False):
+def process_week(summarizer: WeekSummarizer, year: int, week_number: int, out_dir: Path, data_dir: Path, force: bool = False):
     """Process a single week and save the summary."""
     start_date = date.fromisocalendar(year, week_number, 1)
     end_date = date.fromisocalendar(year, week_number, 7)
@@ -16,7 +16,7 @@ def process_week(summarizer: WeekSummarizer, year: int, week_number: int, out_di
     json_file_name = f"{year}_week_{week_number}_{start_date}-{end_date}.json"
     md_file_name = f"{year}_week_{week_number}_{start_date}-{end_date}.md"
 
-    json_out_path = out_dir / json_file_name
+    json_out_path = data_dir / json_file_name
     md_out_path = out_dir / md_file_name
 
     # Check if summary already exists
@@ -34,18 +34,20 @@ def process_week(summarizer: WeekSummarizer, year: int, week_number: int, out_di
     try:
         summary = summarizer.summarize_week(start_date, end_date)
 
-        # Save JSON summary
+        # Save JSON summary to data directory
         with open(json_out_path, "w") as f:
             f.write(summary.model_dump_json())
 
-        # Save Markdown summary
+        # Save Markdown summary to main directory
         with open(md_out_path, "w") as f:
             md_str = summary.str_fmt()
             if "## Other" in md_str:
                 md_str = md_str.replace("## Other", "## Weiteres")
             f.write(md_str)
 
-        click.echo(f"✅ Saved summary for week {year}/{week_number} to {md_out_path}")
+        click.echo(f"✅ Saved summary for week {year}/{week_number}")
+        click.echo(f"   JSON: {json_out_path}")
+        click.echo(f"   MD:   {md_out_path}")
 
     except Exception as e:
         click.echo(f"❌ Error processing week {year}/{week_number}: {str(e)}", err=True)
@@ -103,9 +105,11 @@ def main(weeks: List[int], current: bool, force: bool):
 
     """
     out_dir = MAIN_DIR / "weekly_summaries"
+    data_dir = out_dir / "data"
     out_dir.mkdir(exist_ok=True, parents=True)
+    data_dir.mkdir(exist_ok=True, parents=True)
 
-    summarizer = WeekSummarizer(model_name=LLM)
+    summarizer = WeekSummarizer()
 
     if force:
         click.echo("⚠️  Force mode enabled - existing summaries will be overwritten")
@@ -115,12 +119,12 @@ def main(weeks: List[int], current: bool, force: bool):
         # Default: process current week or previous week
         offset = 0 if current else 1
         year, week_number = get_week_info(offset)
-        process_week(summarizer, year, week_number, out_dir, force)
+        process_week(summarizer, year, week_number, out_dir, data_dir, force)
     else:
         # Process all specified week offsets
         for offset in weeks:
             year, week_number = get_week_info(offset)
-            process_week(summarizer, year, week_number, out_dir, force)
+            process_week(summarizer, year, week_number, out_dir, data_dir, force)
 
     click.echo("✨ Weekly summary generation complete")
 

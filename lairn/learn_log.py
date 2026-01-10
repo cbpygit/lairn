@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 def preprocess_text_field(text):
@@ -33,7 +33,8 @@ class LearnLogMessage(BaseModel):
     timestamp: datetime = Field(description="The timestamp of the message")
     text: str = Field(description="The text of the message")
 
-    @root_validator(pre=True)
+    @model_validator(mode='before')
+    @classmethod
     def transform_keys(cls, values):
         # Transform the keys to match the model's fields
         if "User" in values:
