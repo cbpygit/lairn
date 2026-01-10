@@ -1,15 +1,12 @@
 from datetime import date
-from pathlib import Path
 from typing import Optional
 
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
 from lairn.common import create_chat_openai
 from lairn.config import (
-    LLM,
     LLM_WEEK_PARSE_MODEL,
     LLM_WEEK_PARSE_REASONING_EFFORT,
     LLM_WEEK_REPORT_MODEL,
@@ -58,6 +55,8 @@ PT_LIST_WEEK_ACTIVITIES = PromptTemplate(
       - Stick close to the actual logs, making only edits to improve readability and to give 
         a standardized format
       - Do not make anything up
+      - Do NOT include dates or timestamps in the activity descriptions
+      - Each activity should be a simple bullet point without date prefixes
 
     ## Response format
 
@@ -110,7 +109,14 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
 
     {nomy_activities}
 
+    ## Additional Context
+
+    {additional_context}
+
     ## Further instructions
+      - If additional context is provided above, take it fully into account when writing the summary.
+        This may include special circumstances (illness, vacation, first week after break, etc.) that
+        should be naturally integrated into the narrative.
       - Start directly with substantive content about what the student learned or worked on this week.
         Do NOT begin with meta-commentary about the week's organization, data availability, or generic
         statements like "Die Woche war überwiegend häuslich organisiert" or "Diese Woche kombinierte...".
@@ -146,6 +152,7 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
         "previous_summaries",
         "activities",
         "nomy_activities",
+        "additional_context",
         "response_language",
     ],
 )
@@ -348,7 +355,7 @@ class WeekSummarizer(ContextMixinClassLevel2):
             for s in sorted_summaries
         ])
 
-    def summarize_week(self, start_date: date, end_date: date) -> WeekActivitiesWithDateInfo:
+    def summarize_week(self, start_date: date, end_date: date, comment: str | None = None) -> WeekActivitiesWithDateInfo:
         print(f"Summarizing week from {start_date} to {end_date}")
 
         iso_cal = start_date.isocalendar()
@@ -386,6 +393,9 @@ class WeekSummarizer(ContextMixinClassLevel2):
             }
         )
 
+        # Prepare additional context (comment if provided)
+        additional_context = comment if comment else "No additional context provided."
+        
         summary = self.report_model.invoke(
             PT_SUMMARIZE_WEEK.template.format(
                 age=self.student_age,
@@ -393,6 +403,7 @@ class WeekSummarizer(ContextMixinClassLevel2):
                 previous_summaries=self.load_previous_summaries(),
                 activities=activities.str_fmt(),
                 nomy_activities=nomy_activities or "No Nomy School data available for this week.",
+                additional_context=additional_context,
                 response_language=OUTPUT_LANGUAGE,
             )
         ).content

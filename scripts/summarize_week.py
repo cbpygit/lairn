@@ -4,11 +4,12 @@ import click
 from pathlib import Path
 from typing import List
 
-from lairn.config import MAIN_DIR, LLM
+from lairn.config import MAIN_DIR, LLM, SCANS_DIR
 from lairn.reporting.week_summarizer import WeekSummarizer
+from lairn.reporting.week_scans import build_week_scans_pdf
 
 
-def process_week(summarizer: WeekSummarizer, year: int, week_number: int, out_dir: Path, data_dir: Path, force: bool = False):
+def process_week(summarizer: WeekSummarizer, year: int, week_number: int, out_dir: Path, data_dir: Path, force: bool = False, comment: str | None = None):
     """Process a single week and save the summary."""
     start_date = date.fromisocalendar(year, week_number, 1)
     end_date = date.fromisocalendar(year, week_number, 7)
@@ -30,9 +31,11 @@ def process_week(summarizer: WeekSummarizer, year: int, week_number: int, out_di
             click.echo(f"⚠️  Overwriting existing summary for week {year}/{week_number}")
 
     click.echo(f"🔄 Processing week {year}/{week_number} ({start_date} to {end_date})")
+    if comment:
+        click.echo(f"📝 With comment: {comment}")
 
     try:
-        summary = summarizer.summarize_week(start_date, end_date)
+        summary = summarizer.summarize_week(start_date, end_date, comment=comment)
 
         # Save JSON summary to data directory
         with open(json_out_path, "w") as f:
@@ -48,6 +51,30 @@ def process_week(summarizer: WeekSummarizer, year: int, week_number: int, out_di
         click.echo(f"✅ Saved summary for week {year}/{week_number}")
         click.echo(f"   JSON: {json_out_path}")
         click.echo(f"   MD:   {md_out_path}")
+        
+        # Generate scans PDF if SCANS_DIR is configured
+        if SCANS_DIR:
+            scans_pdf_name = f"{year}_week_{week_number}_{start_date}-{end_date}_scans.pdf"
+            scans_pdf_path = out_dir / scans_pdf_name
+            
+            click.echo(f"🔄 Building scans PDF for week {year}/{week_number}...")
+            try:
+                success = build_week_scans_pdf(
+                    scans_dir=SCANS_DIR,
+                    start_date=start_date,
+                    end_date=end_date,
+                    output_path=scans_pdf_path,
+                    normalize_pixel=True,
+                    compress=True
+                )
+                if success:
+                    click.echo(f"✅ Saved scans PDF: {scans_pdf_path}")
+                else:
+                    click.echo(f"⚠️  No scans found for week {year}/{week_number}")
+            except Exception as e:
+                click.echo(f"❌ Error building scans PDF: {str(e)}", err=True)
+        else:
+            click.echo("ℹ️  SCANS_DIR not configured, skipping scans PDF generation")
 
     except Exception as e:
         click.echo(f"❌ Error processing week {year}/{week_number}: {str(e)}", err=True)
@@ -79,7 +106,13 @@ def get_week_info(offset: int = 0) -> tuple[int, int]:
 )
 @click.option("--current", "-c", is_flag=True, help="Process current week instead of previous week.")
 @click.option("--force", "-f", is_flag=True, help="Force overwrite of existing summaries.")
-def main(weeks: List[int], current: bool, force: bool):
+@click.option(
+    "--comment",
+    "-m",
+    type=str,
+    help="Additional context or comment to include in the report (e.g., 'Student was sick this week').",
+)
+def main(weeks: List[int], current: bool, force: bool, comment: str):
     """Generate weekly summaries for homeschooling activities.
 
     By default, the script will skip weeks that already have summaries.
@@ -97,11 +130,14 @@ def main(weeks: List[int], current: bool, force: bool):
     Process current week
     >> python scripts/summarize_week.py --current
 
+    Process current week with context comment
+    >> python scripts/summarize_week.py --current --comment "Levy was sick this week"
+
     Process weeks from 2 and 3 weeks ago
     >> python scripts/summarize_week.py -w 2 -w 3
 
-    Force regeneration of last week's summary
-    >> python scripts/summarize_week.py --force
+    Force regeneration of last week's summary with comment
+    >> python scripts/summarize_week.py --force -m "First week after winter break, includes activities from break"
 
     """
     out_dir = MAIN_DIR / "weekly_summaries"
@@ -119,12 +155,12 @@ def main(weeks: List[int], current: bool, force: bool):
         # Default: process current week or previous week
         offset = 0 if current else 1
         year, week_number = get_week_info(offset)
-        process_week(summarizer, year, week_number, out_dir, data_dir, force)
+        process_week(summarizer, year, week_number, out_dir, data_dir, force, comment)
     else:
         # Process all specified week offsets
         for offset in weeks:
             year, week_number = get_week_info(offset)
-            process_week(summarizer, year, week_number, out_dir, data_dir, force)
+            process_week(summarizer, year, week_number, out_dir, data_dir, force, comment)
 
     click.echo("✨ Weekly summary generation complete")
 
