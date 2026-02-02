@@ -60,6 +60,16 @@ class TestFilenameParser:
         assert dt.second == 23
         assert dt.microsecond == 544000
     
+    def test_parse_gescannt_duplicate_suffix(self):
+        """Test parsing filenames with duplicate suffix like ' (2)'."""
+        dt = parse_gescannt_filename("Gescannt_20260130-0951 (2).pdf")
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 1
+        assert dt.day == 30
+        assert dt.hour == 9
+        assert dt.minute == 51
+    
     def test_parse_gescannt_invalid(self):
         """Test invalid Gescannt filenames return None."""
         assert parse_gescannt_filename("invalid.pdf") is None

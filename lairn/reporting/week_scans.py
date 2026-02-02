@@ -21,7 +21,7 @@ from pypdf import PdfWriter, PdfReader
 
 # Filename patterns for scan files
 PATTERN_GESCANNT = re.compile(
-    r"Gescannt_(\d{8})[-_](\d{4,9})\.(.+)$",
+    r"Gescannt_(\d{8})[-_](\d{4,9})(?:\s\(\d+\))?\.(.+)$",
     re.IGNORECASE
 )
 PATTERN_PIXEL = re.compile(
