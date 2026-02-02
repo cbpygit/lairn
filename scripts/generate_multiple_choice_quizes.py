@@ -6,7 +6,7 @@ from pathlib import Path
 import openai
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
-from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from langchain_openai import ChatOpenAI
 
 from lairn.config import MAIN_DIR, LLM
@@ -68,15 +68,17 @@ class MultipleChoiceQuizQuestion(BaseModel):
     answers: list[str] = Field(description="The possible answers to the question")
     answer_key: int = Field(description="The index of the correct answer in the answers list")
 
-    @validator("answers")
+    @field_validator("answers")
+    @classmethod
     def check_answers_length(cls, v):
         if len(v) != 4:
             raise ValueError("There must be exactly 4 answers")
         return v
 
-    @validator("answer_key")
-    def check_answer_key(cls, v, values):
-        if "answers" in values and (v < 0 or v >= len(values["answers"])):
+    @field_validator("answer_key")
+    @classmethod
+    def check_answer_key(cls, v, info):
+        if "answers" in info.data and (v < 0 or v >= len(info.data["answers"])):
             raise ValueError("answer_key must be a valid index in answers")
         return v
 
@@ -97,9 +99,10 @@ class MultipleChoiceQuiz(BaseModel):
     questions: list[MultipleChoiceQuizQuestion] = Field(description="The multiple choice quiz questions")
     num_questions: int = Field(description="The number of questions in the quiz")
 
-    @validator("questions")
-    def check_num_questions(cls, v, values):
-        if "num_questions" in values and len(v) != values["num_questions"]:
+    @field_validator("questions")
+    @classmethod
+    def check_num_questions(cls, v, info):
+        if "num_questions" in info.data and len(v) != info.data["num_questions"]:
             raise ValueError("The number of questions must match num_questions")
         return v
 

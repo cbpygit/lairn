@@ -1,13 +1,19 @@
 from datetime import date
-from pathlib import Path
 from typing import Optional
 
 from langchain_core.output_parsers import PydanticOutputParser
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
-from lairn.config import LLM, MAIN_DIR, OUTPUT_LANGUAGE
+from lairn.common import create_chat_openai
+from lairn.config import (
+    LLM_WEEK_PARSE_MODEL,
+    LLM_WEEK_PARSE_REASONING_EFFORT,
+    LLM_WEEK_REPORT_MODEL,
+    LLM_WEEK_REPORT_REASONING_EFFORT,
+    MAIN_DIR,
+    OUTPUT_LANGUAGE,
+)
 from lairn.context_mixin import ContextMixinClassLevel2
 from lairn.integrations.sofatutor.activity_list_parser import SofatutorLearningActivity
 from lairn.learn_log import LearnLogMessage
@@ -49,6 +55,8 @@ PT_LIST_WEEK_ACTIVITIES = PromptTemplate(
       - Stick close to the actual logs, making only edits to improve readability and to give 
         a standardized format
       - Do not make anything up
+      - Do NOT include dates or timestamps in the activity descriptions
+      - Each activity should be a simple bullet point without date prefixes
 
     ## Response format
 
@@ -77,7 +85,7 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
     # Expert home schooling learning assistant
 
     You receive a list of homeschooling activities of a single student with age {age} logged during the week,
-    as well as activities from their regular school (Nomy School). Write a short summary to explain what 
+    and possibly activities from their regular school (Nomy School). Write a short summary to explain what 
     progress the student made during the week. The summary should be concise but informative. The target 
     reader is an external instructor who monitors the student's progress and uses this to give advice to 
     the parents.
@@ -101,14 +109,27 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
 
     {nomy_activities}
 
+    ## Additional Context
+
+    {additional_context}
+
     ## Further instructions
-      - Start the summary with an overall composition overview statement that takes into account both
-        homeschooling and Nomy School activities. For example "This week combined intensive math work
-        at Nomy School with creative writing activities at home". Do not use this exact example to
-        avoid boring repetition.
+      - If additional context is provided above, take it fully into account when writing the summary.
+        This may include special circumstances (illness, vacation, first week after break, etc.) that
+        should be naturally integrated into the narrative.
+      - Start directly with substantive content about what the student learned or worked on this week.
+        Do NOT begin with meta-commentary about the week's organization, data availability, or generic
+        statements like "Die Woche war überwiegend häuslich organisiert" or "Diese Woche kombinierte...".
+        Instead, begin with the most important learning content.
+      - If Nomy School data is not available (indicated by "No Nomy School data available"), do NOT
+        mention this fact at all. Do not say the report is missing, delayed, or will be added later.
+        Simply write the summary based on the homeschooling activities alone.
+      - If Nomy School data IS available, naturally integrate it with the homeschooling activities,
+        showing how they complement each other.
       - If the notes contain information about skipped Nomy school attendance, take it into account.
       - Take into account the previous summaries to avoid repeating yourself, and to achieve a
-        "good flow" for a reader who reads multiple week summaries in a row.
+        "good flow" for a reader who reads multiple week summaries in a row. Vary your phrasing and
+        sentence structure to avoid monotonous patterns.
       - In general: Respond with an unstructured (or minimally structured if too long) text summary 
         (may use paragraphs, but not sections, bullet points or lists). Exception: if the notes
         describe a project or other out-of-the-ordinary activities of longer duration, you should
@@ -118,8 +139,7 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
         categories and the progress that was made. Be concise.
       - Do not mention exact time durations of activities.
       - Make sure major activities are emphasized over small details.
-      - Mention both homeschooling and Nomy School activities in a balanced way, showing how they
-        complement each other.
+      - Do not speculate about what might have happened at Nomy School if no data is provided.
 
     ## Response language
 
@@ -132,6 +152,7 @@ PT_SUMMARIZE_WEEK = PromptTemplate(
         "previous_summaries",
         "activities",
         "nomy_activities",
+        "additional_context",
         "response_language",
     ],
 )
@@ -213,11 +234,10 @@ class WeekActivitiesWithDateInfo(BaseModel):
 
         title_suffix = " (Vorversion)" if self.is_preliminary else ""
 
+        # Only include Nomy section if there are actual activities
         nomy_section = ""
         if self.nomy_activities:
             nomy_section = f"\n## Nomy School\n{self.nomy_activities}\n\n"
-        elif self.is_preliminary:
-            nomy_section = "\n## Nomy School\nNomy Wochenbericht liegt noch nicht vor.\n\n"
 
         return f"""
 # {self.year}/{self.week_number} ({self.start_date} - {self.end_date}){title_suffix}
@@ -229,13 +249,37 @@ class WeekActivitiesWithDateInfo(BaseModel):
 
 
 class WeekSummarizer(ContextMixinClassLevel2):
-    def __init__(self, model_name: str | None = None, n_previous_summaries: int = 3):
-        self.model_name = model_name or LLM
-
-        self.model = ChatOpenAI(
-            model_name=self.model_name, temperature=1.0 if model_name.startswith("o") else 1.0
-        )
-        print(self.model)
+    def __init__(
+        self,
+        model_name: str | None = None,
+        parse_model: str | None = None,
+        parse_reasoning_effort: str | None = None,
+        report_model: str | None = None,
+        report_reasoning_effort: str | None = None,
+        n_previous_summaries: int = 3,
+    ):
+        # Legacy support: if model_name is provided, use it for both
+        if model_name:
+            self.parse_model = create_chat_openai(
+                model_name=model_name,
+                temperature=1.0 if model_name.startswith("o") else 1.0,
+            )
+            self.report_model = self.parse_model
+        else:
+            # Use separate models for parsing and reporting
+            self.parse_model = create_chat_openai(
+                model_name=parse_model or LLM_WEEK_PARSE_MODEL,
+                temperature=1.0,
+                reasoning_effort=parse_reasoning_effort or LLM_WEEK_PARSE_REASONING_EFFORT,
+            )
+            self.report_model = create_chat_openai(
+                model_name=report_model or LLM_WEEK_REPORT_MODEL,
+                temperature=1.0,
+                reasoning_effort=report_reasoning_effort or LLM_WEEK_REPORT_REASONING_EFFORT,
+            )
+        
+        print(f"Parse model: {self.parse_model}")
+        print(f"Report model: {self.report_model}")
         self.additional_explanations = self.load_additional_explanations()
         self.n_previous_summaries = n_previous_summaries
 
@@ -268,13 +312,13 @@ class WeekSummarizer(ContextMixinClassLevel2):
         """
         subject_activities_text = "\n".join(f"- {bp}" for bp in bullet_points)
 
-        chain = PT_NOMY_SUBJECT_SUMMARY | self.model
+        chain = PT_NOMY_SUBJECT_SUMMARY | self.parse_model
         resp = chain.invoke(
             {
                 "subject_name": subject_name,
                 "teacher": teacher,
                 "activities": subject_activities_text,
-                "response_language": OUTPUT_LANGUAGE,  # or self.student_language if you track that
+                "response_language": OUTPUT_LANGUAGE,
             }
         )
         return resp.content.strip()
@@ -304,10 +348,14 @@ class WeekSummarizer(ContextMixinClassLevel2):
             : self.n_previous_summaries
         ]
 
-        # Return the last n_previous_summaries summaries as a formatted combined str
-        return "\n\n".join([summary.str_fmt() for summary in sorted_summaries])
+        # Return only the narrative summaries (not the full markdown with bullet lists)
+        # to reduce repetitive phrasing
+        return "\n\n---\n\n".join([
+            f"Week {s.week_number}/{s.year} ({s.start_date} - {s.end_date}):\n{s.summary}"
+            for s in sorted_summaries
+        ])
 
-    def summarize_week(self, start_date: date, end_date: date) -> WeekActivitiesWithDateInfo:
+    def summarize_week(self, start_date: date, end_date: date, comment: str | None = None) -> WeekActivitiesWithDateInfo:
         print(f"Summarizing week from {start_date} to {end_date}")
 
         iso_cal = start_date.isocalendar()
@@ -332,7 +380,7 @@ class WeekSummarizer(ContextMixinClassLevel2):
         # Set up a parser + inject instructions into the prompt template.
         parser = PydanticOutputParser(pydantic_object=WeekActivities)
 
-        chain = PT_LIST_WEEK_ACTIVITIES | self.model | parser
+        chain = PT_LIST_WEEK_ACTIVITIES | self.parse_model | parser
 
         activities = chain.invoke(
             {
@@ -345,13 +393,17 @@ class WeekSummarizer(ContextMixinClassLevel2):
             }
         )
 
-        summary = self.model.invoke(
+        # Prepare additional context (comment if provided)
+        additional_context = comment if comment else "No additional context provided."
+        
+        summary = self.report_model.invoke(
             PT_SUMMARIZE_WEEK.template.format(
                 age=self.student_age,
                 additional_explanations=self.additional_explanations,
                 previous_summaries=self.load_previous_summaries(),
                 activities=activities.str_fmt(),
-                nomy_activities=nomy_activities or "Nomy Wochenbericht liegt noch nicht vor.",
+                nomy_activities=nomy_activities or "No Nomy School data available for this week.",
+                additional_context=additional_context,
                 response_language=OUTPUT_LANGUAGE,
             )
         ).content
