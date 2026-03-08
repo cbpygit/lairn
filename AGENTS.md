@@ -29,6 +29,7 @@ The main recurring workflows are:
 ## Common Workflows
 
 - Weekly summary generation: `scripts/summarize_week.py`
+- Scans-only rebuild: `scripts/rebuild_week_scans.py`
 - Nomy PDF processing: `scripts/process_nomy_reports.py`
 - Sofatutor activity import: `scripts/update_sofatutor_activities.py`
 - Activity rollup by subject: `scripts/activities_by_subject.py`
@@ -46,7 +47,8 @@ The main recurring workflows are:
 
 - Weekly summary failures can come from raw log parsing before any LLM call happens.
 - Scan collection currently supports `Gescannt_*`, `PXL_*`, and WhatsApp-style `IMG-YYYYMMDD-WAxxxx.*` filenames.
-- Scan PDFs are built from both PDFs and images, and may rename Pixel images during normalization.
+- Scan PDFs are built from both PDFs and images, and may rename Pixel and WhatsApp images during normalization.
+- If only the scans PDF needs to be refreshed, prefer the scans-only rebuild script/task over regenerating the text summary.
 
 ## Safe Agent Behavior
 

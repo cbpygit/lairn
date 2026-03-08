@@ -52,6 +52,31 @@ tasks:
           poetry run python scripts/summarize_week.py
         fi
 
+  rebuild-scans-current:
+    desc: Rebuild the current week's scans PDF only
+    cmds:
+      - poetry run python scripts/rebuild_week_scans.py --current
+
+  rebuild-scans-current-force:
+    desc: Force rebuild the current week's scans PDF only
+    cmds:
+      - poetry run python scripts/rebuild_week_scans.py --current --force
+
+  rebuild-scans-previous-force:
+    desc: Force rebuild the previous week's scans PDF only
+    cmds:
+      - poetry run python scripts/rebuild_week_scans.py --force
+
+  rebuild-scans-week:
+    desc: Rebuild the scans PDF for a week offset
+    requires:
+      vars:
+        - OFFSET
+    vars:
+      EXTRA_ARGS: '{{default "" .EXTRA_ARGS}}'
+    cmds:
+      - poetry run python scripts/rebuild_week_scans.py --weeks "{{.OFFSET}}" {{.EXTRA_ARGS}}
+
   process-nomy:
     desc: Parse Nomy PDF reports into JSON summaries
     cmds:

@@ -12,6 +12,7 @@ from lairn.reporting.week_scans import (
     parse_whatsapp_filename,
     parse_scan_filename,
     normalize_pixel_images,
+    normalize_whatsapp_images,
     collect_week_scans,
 )
 
@@ -70,6 +71,16 @@ class TestFilenameParser:
         assert dt.day == 30
         assert dt.hour == 9
         assert dt.minute == 51
+
+    def test_parse_gescannt_normalization_suffix(self):
+        """Test parsing normalized filenames with source or dup suffixes."""
+        dt = parse_gescannt_filename("Gescannt_20260305-0000_WA0009_dup1.jpg")
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 3
+        assert dt.day == 5
+        assert dt.hour == 0
+        assert dt.minute == 0
     
     def test_parse_gescannt_invalid(self):
         """Test invalid Gescannt filenames return None."""
@@ -220,6 +231,44 @@ class TestPixelNormalization:
             assert expected.exists()
             
             # Original collision file should still exist
+            assert collision_file.exists()
+            assert collision_file.read_text() == "existing"
+
+    def test_normalize_whatsapp_images(self):
+        """Test basic WhatsApp image normalization."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            whatsapp_file = tmpdir / "IMG-20260305-WA0009.jpg"
+            other_file = tmpdir / "Gescannt_20260303-1000.pdf"
+
+            whatsapp_file.touch()
+            other_file.touch()
+
+            renamed = normalize_whatsapp_images(tmpdir)
+
+            assert len(renamed) == 1
+            expected = tmpdir / "Gescannt_20260305-0000_WA0009.jpg"
+            assert expected.exists()
+            assert not whatsapp_file.exists()
+            assert other_file.exists()
+
+    def test_normalize_whatsapp_collision(self):
+        """Test collision handling for normalized WhatsApp filenames."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            whatsapp_file = tmpdir / "IMG-20260305-WA0009.jpg"
+            collision_file = tmpdir / "Gescannt_20260305-0000_WA0009.jpg"
+
+            whatsapp_file.touch()
+            collision_file.write_text("existing")
+
+            renamed = normalize_whatsapp_images(tmpdir)
+
+            assert len(renamed) == 1
+            expected = tmpdir / "Gescannt_20260305-0000_WA0009_dup1.jpg"
+            assert expected.exists()
             assert collision_file.exists()
             assert collision_file.read_text() == "existing"
 

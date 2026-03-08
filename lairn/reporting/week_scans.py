@@ -21,7 +21,7 @@ from pypdf import PdfWriter, PdfReader
 
 # Filename patterns for scan files
 PATTERN_GESCANNT = re.compile(
-    r"Gescannt_(\d{8})[-_](\d{4,9})(?:\s\(\d+\))?\.(.+)$",
+    r"Gescannt_(\d{8})[-_](\d{4,9})(?:_[^.()\s]+)*(?:\s\(\d+\))?\.(.+)$",
     re.IGNORECASE
 )
 PATTERN_PIXEL = re.compile(
@@ -135,6 +135,30 @@ def parse_whatsapp_filename(filename: str) -> Optional[datetime]:
         return None
 
 
+def build_normalized_scan_name(dt: datetime, original_ext: str, suffix: str = "") -> str:
+    """Build a Gescannt_* filename for a scan image."""
+    if dt.second == 0 and dt.microsecond == 0:
+        time_part = dt.strftime("%H%M")
+    else:
+        time_part = f"{dt.strftime('%H%M%S')}{dt.microsecond // 1000:03d}"
+    return f"Gescannt_{dt.strftime('%Y%m%d')}-{time_part}{suffix}{original_ext}"
+
+
+def build_collision_safe_path(scans_dir: Path, file_path: Path, new_name: str) -> Path:
+    """Return a collision-safe destination path for a renamed scan."""
+    new_path = scans_dir / new_name
+
+    counter = 1
+    while new_path.exists() and new_path != file_path:
+        stem = new_name.rsplit(".", 1)[0]
+        ext = new_name.rsplit(".", 1)[1] if "." in new_name else ""
+        new_name = f"{stem}_dup{counter}.{ext}" if ext else f"{stem}_dup{counter}"
+        new_path = scans_dir / new_name
+        counter += 1
+
+    return new_path
+
+
 def parse_scan_filename(filename: str) -> Optional[datetime]:
     """Parse timestamp from any supported scan filename format."""
     dt = parse_gescannt_filename(filename)
@@ -178,18 +202,8 @@ def normalize_pixel_images(scans_dir: Path) -> list[tuple[Path, Path]]:
         # Get the original extension
         original_ext = file_path.suffix.lower()
         
-        # Build new filename: Gescannt_YYYYMMDD-HHMMSSmmm.ext
-        new_name = f"Gescannt_{dt.strftime('%Y%m%d')}-{dt.strftime('%H%M%S')}{dt.microsecond // 1000:03d}{original_ext}"
-        new_path = scans_dir / new_name
-        
-        # Handle collisions
-        counter = 1
-        while new_path.exists() and new_path != file_path:
-            stem = new_name.rsplit('.', 1)[0]
-            ext = new_name.rsplit('.', 1)[1] if '.' in new_name else ''
-            new_name = f"{stem}_dup{counter}.{ext}" if ext else f"{stem}_dup{counter}"
-            new_path = scans_dir / new_name
-            counter += 1
+        new_name = build_normalized_scan_name(dt, original_ext)
+        new_path = build_collision_safe_path(scans_dir, file_path, new_name)
         
         # Rename the file
         if new_path != file_path:
@@ -200,6 +214,51 @@ def normalize_pixel_images(scans_dir: Path) -> list[tuple[Path, Path]]:
             except Exception as e:
                 logger.error(f"Failed to rename {filename}: {e}")
     
+    return renamed
+
+
+def normalize_whatsapp_images(scans_dir: Path) -> list[tuple[Path, Path]]:
+    """Rename WhatsApp images to Gescannt_YYYYMMDD-HHMM_WAxxxx.jpg format."""
+    if not scans_dir.exists():
+        logger.warning(f"Scans directory does not exist: {scans_dir}")
+        return []
+
+    renamed = []
+
+    for file_path in scans_dir.iterdir():
+        if not file_path.is_file():
+            continue
+
+        filename = file_path.name
+        match = PATTERN_WHATSAPP.match(filename)
+        if not match:
+            continue
+
+        dt = parse_whatsapp_filename(filename)
+        if not dt:
+            continue
+
+        _, wa_number, _ = match.groups()
+        original_ext = file_path.suffix.lower()
+        new_name = build_normalized_scan_name(dt, original_ext, suffix=f"_WA{wa_number}")
+        new_path = build_collision_safe_path(scans_dir, file_path, new_name)
+
+        if new_path != file_path:
+            try:
+                shutil.move(str(file_path), str(new_path))
+                logger.info(f"Renamed: {filename} -> {new_path.name}")
+                renamed.append((file_path, new_path))
+            except Exception as e:
+                logger.error(f"Failed to rename {filename}: {e}")
+
+    return renamed
+
+
+def normalize_scan_images(scans_dir: Path) -> list[tuple[Path, Path]]:
+    """Rename supported image sources into the Gescannt_* naming scheme."""
+    renamed = []
+    renamed.extend(normalize_pixel_images(scans_dir))
+    renamed.extend(normalize_whatsapp_images(scans_dir))
     return renamed
 
 
@@ -413,12 +472,12 @@ def build_week_scans_pdf(
         logger.warning(f"Scans directory not available: {scans_dir}")
         return False
     
-    # Step 1: Normalize Pixel images
+    # Step 1: Normalize scan image filenames
     if normalize_pixel:
-        logger.info("Normalizing Pixel image filenames...")
-        renamed = normalize_pixel_images(scans_dir)
+        logger.info("Normalizing scan image filenames...")
+        renamed = normalize_scan_images(scans_dir)
         if renamed:
-            logger.info(f"Renamed {len(renamed)} Pixel images")
+            logger.info(f"Renamed {len(renamed)} scan images")
     
     # Step 2: Collect scans for the week
     logger.info(f"Collecting scans for week {start_date} to {end_date}...")
