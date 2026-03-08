@@ -1,0 +1,80 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install project dependencies
+    cmds:
+      - poetry install
+
+  test:
+    desc: Run the full test suite
+    cmds:
+      - poetry run pytest
+
+  test-reporting:
+    desc: Run reporting and log parsing tests
+    cmds:
+      - poetry run pytest tests/test_learn_log.py tests/test_week_summarizer.py tests/test_week_scans.py
+
+  summarize-current:
+    desc: Generate the current week's summary
+    vars:
+      COMMENT: '{{default "" .COMMENT}}'
+    cmds:
+      - |
+        if [ -n "{{.COMMENT}}" ]; then
+          poetry run python scripts/summarize_week.py --current --comment "{{.COMMENT}}"
+        else
+          poetry run python scripts/summarize_week.py --current
+        fi
+
+  summarize-current-force:
+    desc: Regenerate the current week's summary
+    vars:
+      COMMENT: '{{default "" .COMMENT}}'
+    cmds:
+      - |
+        if [ -n "{{.COMMENT}}" ]; then
+          poetry run python scripts/summarize_week.py --current --force --comment "{{.COMMENT}}"
+        else
+          poetry run python scripts/summarize_week.py --current --force
+        fi
+
+  summarize-previous:
+    desc: Generate the previous week's summary
+    vars:
+      COMMENT: '{{default "" .COMMENT}}'
+    cmds:
+      - |
+        if [ -n "{{.COMMENT}}" ]; then
+          poetry run python scripts/summarize_week.py --comment "{{.COMMENT}}"
+        else
+          poetry run python scripts/summarize_week.py
+        fi
+
+  process-nomy:
+    desc: Parse Nomy PDF reports into JSON summaries
+    cmds:
+      - poetry run python scripts/process_nomy_reports.py
+
+  update-sofatutor:
+    desc: Parse Sofatutor exports into activity JSON files
+    cmds:
+      - poetry run python scripts/update_sofatutor_activities.py
+
+  activities-by-subject:
+    desc: Build a subject report for a date range
+    requires:
+      vars:
+        - START
+        - END
+    vars:
+      OUTPUT: '{{default "" .OUTPUT}}'
+      EXTRA_ARGS: '{{default "" .EXTRA_ARGS}}'
+    cmds:
+      - |
+        if [ -n "{{.OUTPUT}}" ]; then
+          poetry run python scripts/activities_by_subject.py -s "{{.START}}" -e "{{.END}}" -o "{{.OUTPUT}}" {{.EXTRA_ARGS}}
+        else
+          poetry run python scripts/activities_by_subject.py -s "{{.START}}" -e "{{.END}}" {{.EXTRA_ARGS}}
+        fi

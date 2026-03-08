@@ -9,6 +9,7 @@ import pytest
 from lairn.reporting.week_scans import (
     parse_gescannt_filename,
     parse_pixel_filename,
+    parse_whatsapp_filename,
     parse_scan_filename,
     normalize_pixel_images,
     collect_week_scans,
@@ -104,19 +105,58 @@ class TestFilenameParser:
         """Test invalid Pixel filenames return None."""
         assert parse_pixel_filename("invalid.jpg") is None
         assert parse_pixel_filename("PXL_20251213.jpg") is None
-    
+
+    def test_parse_whatsapp_basic(self):
+        """Test parsing IMG-YYYYMMDD-WAxxxx.jpg WhatsApp format."""
+        dt = parse_whatsapp_filename("IMG-20260305-WA0009.jpg")
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 3
+        assert dt.day == 5
+        # Time defaults to midnight
+        assert dt.hour == 0
+        assert dt.minute == 0
+        assert dt.second == 0
+
+    def test_parse_whatsapp_case_insensitive(self):
+        """Test that WhatsApp parsing is case-insensitive."""
+        dt = parse_whatsapp_filename("img-20260305-wa0009.jpg")
+        assert dt is not None
+        assert dt.year == 2026
+
+    def test_parse_whatsapp_duplicate_suffix(self):
+        """Test WhatsApp filenames with duplicate suffix like ' (2)'."""
+        dt = parse_whatsapp_filename("IMG-20260305-WA0009 (2).jpg")
+        assert dt is not None
+        assert dt.year == 2026
+        assert dt.month == 3
+        assert dt.day == 5
+
+    def test_parse_whatsapp_invalid(self):
+        """Test invalid WhatsApp filenames return None."""
+        assert parse_whatsapp_filename("invalid.jpg") is None
+        assert parse_whatsapp_filename("IMG-2026-03-05-WA0009.jpg") is None
+        assert parse_whatsapp_filename("Gescannt_20260109-1052.pdf") is None
+
     def test_parse_scan_filename(self):
         """Test the combined parser function."""
         # Should parse Gescannt format
         dt1 = parse_scan_filename("Gescannt_20260109-1052.pdf")
         assert dt1 is not None
         assert dt1.year == 2026
-        
+
         # Should parse Pixel format
         dt2 = parse_scan_filename("PXL_20251213_083927158.jpg")
         assert dt2 is not None
         assert dt2.year == 2025
-        
+
+        # Should parse WhatsApp format
+        dt3 = parse_scan_filename("IMG-20260305-WA0009.jpg")
+        assert dt3 is not None
+        assert dt3.year == 2026
+        assert dt3.month == 3
+        assert dt3.day == 5
+
         # Should return None for invalid
         assert parse_scan_filename("invalid.pdf") is None
 
@@ -285,11 +325,35 @@ class TestWeekCollection:
     def test_collect_week_scans_nonexistent_dir(self):
         """Test collecting from a non-existent directory."""
         tmpdir = Path("/nonexistent/directory")
-        
+
         start_date = date(2026, 1, 5)
         end_date = date(2026, 1, 11)
-        
+
         scans = collect_week_scans(tmpdir, start_date, end_date)
-        
+
         assert scans == []
+
+    def test_collect_week_scans_whatsapp(self):
+        """Test that WhatsApp images are collected alongside other scan formats."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # Week 10 of 2026 is Mar 2–8
+            whatsapp = tmpdir / "IMG-20260305-WA0009.jpg"
+            gescannt = tmpdir / "Gescannt_20260303-1000.pdf"
+            outside = tmpdir / "IMG-20260201-WA0001.jpg"  # Different month, outside week
+
+            for f in [whatsapp, gescannt, outside]:
+                f.touch()
+
+            start_date = date(2026, 3, 2)
+            end_date = date(2026, 3, 8)
+
+            scans = collect_week_scans(tmpdir, start_date, end_date)
+
+            assert len(scans) == 2
+            names = {s.name for s in scans}
+            assert "IMG-20260305-WA0009.jpg" in names
+            assert "Gescannt_20260303-1000.pdf" in names
+            assert "IMG-20260201-WA0001.jpg" not in names
 

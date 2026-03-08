@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, model_validator
 def preprocess_text_field(text):
     # Escape unescaped quotation marks
     text = re.sub(r'(?<!\\)"', r'\\"', text)
+    # Escape invalid JSON backslashes such as LaTeX commands like \cdot.
+    text = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", text)
     # Escape newlines and tabs
     text = text.replace("\n", "\\n").replace("\t", "\\t")
     return text

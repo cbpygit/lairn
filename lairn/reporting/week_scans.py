@@ -28,6 +28,10 @@ PATTERN_PIXEL = re.compile(
     r"PXL_(\d{8})_(\d{9}(?:\.\w+)?)\.(.+)$",
     re.IGNORECASE
 )
+PATTERN_WHATSAPP = re.compile(
+    r"IMG-(\d{8})-WA(\d+)(?:\s\(\d+\))?\.(.+)$",
+    re.IGNORECASE
+)
 
 
 def parse_gescannt_filename(filename: str) -> Optional[datetime]:
@@ -110,16 +114,41 @@ def parse_pixel_filename(filename: str) -> Optional[datetime]:
         return None
 
 
+def parse_whatsapp_filename(filename: str) -> Optional[datetime]:
+    """Parse date from WhatsApp image filename format IMG-YYYYMMDD-WAxxxx.ext.
+
+    Example: IMG-20260305-WA0009.jpg
+    Time defaults to midnight since WhatsApp filenames carry no time information.
+    """
+    match = PATTERN_WHATSAPP.match(filename)
+    if not match:
+        return None
+
+    date_str, _, _ = match.groups()
+
+    try:
+        year = int(date_str[0:4])
+        month = int(date_str[4:6])
+        day = int(date_str[6:8])
+        return datetime(year, month, day, 0, 0, 0)
+    except (ValueError, IndexError):
+        return None
+
+
 def parse_scan_filename(filename: str) -> Optional[datetime]:
     """Parse timestamp from any supported scan filename format."""
     dt = parse_gescannt_filename(filename)
     if dt:
         return dt
-    
+
     dt = parse_pixel_filename(filename)
     if dt:
         return dt
-    
+
+    dt = parse_whatsapp_filename(filename)
+    if dt:
+        return dt
+
     return None
 
 
